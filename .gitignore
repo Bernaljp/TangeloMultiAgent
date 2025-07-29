@@ -13,6 +13,7 @@ ARCHITECTURE_*.md
 MATH_VALIDATION_*.md
 agent_instructions/
 .agent_configs/
+.claude/
 
 # =============================================================================
 # Python
