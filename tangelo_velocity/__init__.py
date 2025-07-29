@@ -18,11 +18,27 @@ except ImportError:
     _has_preprocessing = False
 
 try:
-    from . import models  
+    from . import models
     _has_models = True
+    
+    # Import available components dynamically 
+    _model_components = {}
+    if hasattr(models, 'list_available_components'):
+        available = models.list_available_components()
+        for component_name in available:
+            if hasattr(models, component_name):
+                _model_components[component_name] = getattr(models, component_name)
+                globals()[component_name] = _model_components[component_name]
+    
+    # Always try to import the factory function
+    if hasattr(models, 'get_velocity_model'):
+        get_velocity_model = models.get_velocity_model
+        _model_components['get_velocity_model'] = get_velocity_model
+        
 except ImportError:
     models = None
     _has_models = False
+    _model_components = {}
 
 # Analysis and plotting (currently empty, always available)
 from . import analysis
@@ -45,6 +61,7 @@ __all__ = ["TangeloConfig", "analysis", "plotting"]
 if _has_preprocessing:
     __all__.append("preprocessing")
 if _has_models:
-    __all__.append("models") 
+    __all__.append("models")
+    __all__.extend(_model_components.keys())
 if _has_api:
     __all__.append("TangeloVelocity")
