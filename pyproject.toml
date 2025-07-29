@@ -1,0 +1,105 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tangelo-velocity"
+version = "0.1.0"
+description = "Multi-modal Single-Cell Velocity Estimation with Graph Neural Networks and ODEs"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Tangelo Velocity Team"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+requires-python = ">=3.11"
+dependencies = [
+    # Core dependencies
+    "torch>=1.12.0",
+    "torch-geometric>=2.0.0",
+    "torchode>=0.2.0",
+    
+    # Scientific computing
+    "numpy>=1.20.0",
+    "scipy>=1.7.0",
+    "pandas>=1.3.0",
+    "scikit-learn>=1.0.0",
+    
+    # Single-cell analysis
+    "scanpy>=1.8.0",
+    "muon>=0.1.0",
+    "anndata>=0.8.0",
+    
+    # Graph analysis
+    "networkx>=2.6.0",
+    
+    # Visualization
+    "matplotlib>=3.5.0",
+    "seaborn>=0.11.0",
+    
+    # Utilities
+    "tqdm>=4.60.0",
+    "pyyaml>=6.0",
+    "typing-extensions>=4.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "pytest-cov>=2.0",
+    "black>=22.0",
+    "isort>=5.0",
+    "flake8>=4.0",
+    "mypy>=0.950",
+    "pre-commit>=2.15.0",
+]
+docs = [
+    "sphinx>=4.0",
+    "sphinx-rtd-theme>=1.0",
+    "nbsphinx>=0.8",
+    "sphinx-autodoc-typehints>=1.12",
+]
+examples = [
+    "jupyter>=1.0.0",
+    "ipywidgets>=7.6.0",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/yourusername/tangelo-velocity"
+"Bug Reports" = "https://github.com/yourusername/tangelo-velocity/issues"
+"Source" = "https://github.com/yourusername/tangelo-velocity"
+
+[tool.setuptools.packages.find]
+include = ["tangelo_velocity*"]
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --cov=tangelo_velocity --cov-report=term-missing"
