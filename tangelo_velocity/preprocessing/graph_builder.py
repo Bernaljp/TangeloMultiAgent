@@ -218,7 +218,7 @@ class GraphBuilder:
         )
         
         # Make the graph undirected by taking the maximum of (i,j) and (j,i)
-        adjacency_matrix = sparse.maximum(adjacency_matrix, adjacency_matrix.T)
+        adjacency_matrix = adjacency_matrix.maximum(adjacency_matrix.T)
         
         return adjacency_matrix
     
