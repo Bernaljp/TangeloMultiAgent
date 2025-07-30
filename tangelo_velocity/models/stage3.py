@@ -102,7 +102,7 @@ class IntegratedODE(nn.Module):
     """
     Enhanced ODE system that integrates regulatory and graph-based transcription rates.
     
-    Implements the integrated formulation: α = W(sigmoid(s)) + G(graph_features)
+    Implements the integrated formulation: α = W @ sigmoid(s) + G(graph_features)
     where regulatory and graph components are combined for transcription rate prediction.
     """
     
@@ -143,7 +143,7 @@ class IntegratedODE(nn.Module):
         """
         Compute integrated transcription rates combining regulatory and graph components.
         
-        α = w₁ * W(sigmoid(s)) + w₂ * G(graph_features)
+        α = w₁ * W @ sigmoid(s) + w₂ * G(graph_features)
         
         Parameters
         ----------
@@ -157,8 +157,8 @@ class IntegratedODE(nn.Module):
         torch.Tensor
             Integrated transcription rates of shape (batch_size, n_genes).
         """
-        # Get regulatory component: α = W @ sigmoid(s) (corrected formulation)
-        regulatory_rates = self.regulatory_network(spliced)
+        # Get regulatory component using proper matrix multiplication: W @ sigmoid(s)
+        regulatory_rates = self.regulatory_network.compute_transcription_rates_direct(spliced)
         
         # Get graph component: G(graph_features)
         graph_rates = self.graph_transcription_net(graph_latent)
@@ -504,7 +504,7 @@ class Stage3IntegratedModel(BaseVelocityModel):
         
         # === INTEGRATED TRANSCRIPTION RATE COMPUTATION ===
         
-        # Get integrated transcription rates: α = w₁ * W(sigmoid(s)) + w₂ * G(graph)
+        # Get integrated transcription rates: α = w₁ * W @ sigmoid(s) + w₂ * G(graph)
         try:
             integrated_transcription_rates = self.integrated_ode.get_integrated_transcription_rates(
                 spliced, graph_latent
@@ -572,7 +572,7 @@ class Stage3IntegratedModel(BaseVelocityModel):
             
             # Transcription rates
             'transcription_rates': integrated_transcription_rates,
-            'regulatory_rates': self.regulatory_network(spliced),
+            'regulatory_rates': self.regulatory_network.compute_transcription_rates_direct(spliced),
             'graph_transcription_rates': self.integrated_ode.graph_transcription_net(graph_latent),
             
             # Integration components
@@ -872,7 +872,7 @@ Architecture:
 Integration Features:
 - Multi-modal input processing (RNA + ATAC + Graphs)
 - Attention-based regulatory-graph fusion
-- Enhanced transcription rate: α = W(sigmoid(s)) + G(graph)
+- Enhanced transcription rate: α = W @ sigmoid(s) + G(graph)
 - Comprehensive loss combining all stages
 """
         return summary.strip()

@@ -299,7 +299,7 @@ class BaseStage1Model(BaseVelocityModel):
         if self.regulatory_network is None:
             raise RuntimeError("Regulatory network not initialized. "
                              "Subclass must set self.regulatory_network in _initialize_components().")
-        return self.regulatory_network(spliced)
+        return self.regulatory_network.compute_transcription_rates_direct(spliced)
     
     def _set_atac_mask(self, atac_mask: torch.Tensor) -> None:
         """Common implementation for ATAC mask setting."""

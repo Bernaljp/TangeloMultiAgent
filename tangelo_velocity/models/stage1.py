@@ -168,7 +168,7 @@ class Stage1RegulatoryModel(BaseStage1Model):
         ode_params = self.ode_parameter_predictor(encoded_features)
         
         # Get transcription rates from regulatory network
-        transcription_rates = self.regulatory_network(spliced)
+        transcription_rates = self.regulatory_network.compute_transcription_rates_direct(spliced)
         
         # Set up initial conditions for ODE
         y0 = torch.cat([unspliced, spliced], dim=1)  # [u, s]
@@ -265,7 +265,7 @@ class Stage1RegulatoryModel(BaseStage1Model):
     
     def _get_transcription_rates(self, spliced: torch.Tensor) -> torch.Tensor:
         """Get transcription rates from regulatory network."""
-        return self.regulatory_network(spliced)
+        return self.regulatory_network.compute_transcription_rates_direct(spliced)
     
     def _set_atac_mask(self, atac_mask: torch.Tensor) -> None:
         """Set ATAC mask for regulatory constraints."""
@@ -336,7 +336,7 @@ class Stage1RegulatoryModel(BaseStage1Model):
         """
         self.eval()
         with torch.no_grad():
-            return self.regulatory_network(spliced)
+            return self.regulatory_network.compute_transcription_rates_direct(spliced)
     
     def get_regulatory_network_info(self) -> Dict[str, Any]:
         """

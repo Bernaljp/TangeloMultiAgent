@@ -21,6 +21,7 @@ from .encoders import SpatialGraphEncoder, ExpressionGraphEncoder, FusionModule
 from .ode_dynamics import ODEParameterPredictor, VelocityODE, ODESolver
 from .stage3 import AttentionFusion, IntegratedODE
 from .loss_functions import Stage1TotalLoss, Stage2TotalLoss, ELBOLoss, TangentSpaceLoss
+from .multiscale import MultiscaleTrainer, MultiscaleLoss, MultiscaleConfig, create_multiscale_config
 
 
 class TemporalDynamicsModule(nn.Module):
@@ -830,6 +831,29 @@ class Stage4AdvancedModel(BaseVelocityModel):
         self.elbo_loss = ELBOLoss()
         self.tangent_space_loss = TangentSpaceLoss()
         
+        # === MULTISCALE TRAINING INTEGRATION ===
+        
+        # Initialize multiscale configuration
+        multiscale_config = getattr(self.config, 'multiscale', None)
+        if multiscale_config is None:
+            # Create default multiscale config if not provided
+            multiscale_config = create_multiscale_config(
+                enable=False,  # Disabled by default for backward compatibility
+                max_scales=4,
+                min_scale_size=1,
+                scale_strategy="geometric"
+            )
+        
+        # Store multiscale configuration
+        self.multiscale_config = multiscale_config
+        
+        # Initialize multiscale loss (will be used if enabled)
+        # Note: We'll set the base_loss_fn later to avoid circular dependency
+        self.multiscale_loss = None
+        
+        # Multiscale trainer (optional, for advanced training routines)
+        self._multiscale_trainer = None
+        
         # === BUFFERS AND TRACKING ===
         
         # ATAC mask storage
@@ -1015,7 +1039,7 @@ class Stage4AdvancedModel(BaseVelocityModel):
         except Exception as e:
             warnings.warn(f"Transcription rate computation failed: {e}")
             # Fallback to regulatory network only
-            outputs['transcription_rates'] = self.regulatory_network(spliced)
+            outputs['transcription_rates'] = self.regulatory_network.compute_transcription_rates_direct(spliced)
         
         # === ODE INTEGRATION AND VELOCITY COMPUTATION ===
         
@@ -1088,7 +1112,7 @@ class Stage4AdvancedModel(BaseVelocityModel):
             'latent_log_var': graph_log_var,
             
             # Regulatory components
-            'regulatory_rates': self.regulatory_network(spliced),
+            'regulatory_rates': self.regulatory_network.compute_transcription_rates_direct(spliced),
             'interaction_matrix': self.regulatory_network.get_interaction_matrix()
         })
         
@@ -1337,6 +1361,147 @@ class Stage4AdvancedModel(BaseVelocityModel):
         """
         return self.regulatory_network.is_sigmoid_frozen()
     
+    # === MULTISCALE TRAINING METHODS ===
+    
+    def _initialize_multiscale_loss(self) -> None:
+        """Initialize multiscale loss with proper base loss function."""
+        def base_loss_fn(outputs, targets, similarity_matrix=None, **kwargs):
+            return self.compute_loss(outputs, targets, similarity_matrix, **kwargs)
+        
+        self.multiscale_loss = MultiscaleLoss(
+            base_loss_fn=base_loss_fn,
+            config=self.multiscale_config
+        )
+    
+    def enable_multiscale_training(
+        self,
+        max_scales: int = 4,
+        min_scale_size: int = 1,
+        scale_strategy: str = "geometric",
+        weights: Optional[List[float]] = None,
+        random_seed: Optional[int] = None
+    ) -> None:
+        """
+        Enable multiscale training for the Stage 4 model.
+        
+        Parameters
+        ----------
+        max_scales : int, default 4
+            Maximum number of scales to use.
+        min_scale_size : int, default 1
+            Minimum size for the smallest scale.
+        scale_strategy : str, default "geometric"
+            Strategy for determining scale sizes.
+        weights : List[float], optional
+            Custom weights for each scale.
+        random_seed : int, optional
+            Random seed for reproducible sampling.
+        """
+        # Update multiscale configuration
+        self.multiscale_config.enable_multiscale = True
+        self.multiscale_config.max_scales = max_scales
+        self.multiscale_config.min_scale_size = min_scale_size
+        self.multiscale_config.scale_strategy = scale_strategy
+        if weights is not None:
+            self.multiscale_config.multiscale_weights = weights
+        if random_seed is not None:
+            self.multiscale_config.random_seed = random_seed
+        
+        # Reinitialize multiscale loss with updated config
+        self._initialize_multiscale_loss()
+        
+        print(f"=== MULTISCALE TRAINING ENABLED ===")
+        print(f"Max scales: {max_scales}")
+        print(f"Min scale size: {min_scale_size}")
+        print(f"Scale strategy: {scale_strategy}")
+        print(f"Scale weights: {self.multiscale_config.multiscale_weights}")
+    
+    def disable_multiscale_training(self) -> None:
+        """Disable multiscale training and revert to standard training."""
+        self.multiscale_config.enable_multiscale = False
+        
+        # Reinitialize multiscale loss with disabled config
+        self._initialize_multiscale_loss()
+        
+        print("=== MULTISCALE TRAINING DISABLED ===")
+    
+    def is_multiscale_enabled(self) -> bool:
+        """
+        Check if multiscale training is currently enabled.
+        
+        Returns
+        -------
+        bool
+            True if multiscale training is enabled, False otherwise.
+        """
+        return self.multiscale_config.enable_multiscale
+    
+    def get_multiscale_trainer(self) -> MultiscaleTrainer:
+        """
+        Get or create a multiscale trainer for this model.
+        
+        Returns
+        -------
+        MultiscaleTrainer
+            Trainer with multiscale capabilities.
+        """
+        if self._multiscale_trainer is None:
+            self._multiscale_trainer = MultiscaleTrainer(
+                model=self,
+                base_loss_fn=self.compute_loss,
+                config=self.multiscale_config
+            )
+        return self._multiscale_trainer
+    
+    def compute_multiscale_loss(
+        self,
+        batch_data: Dict[str, torch.Tensor],
+        targets: Dict[str, torch.Tensor],
+        similarity_matrix: Optional[torch.Tensor] = None,
+        **kwargs
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Compute loss using multiscale training if enabled.
+        
+        Parameters
+        ----------
+        batch_data : Dict[str, torch.Tensor]
+            Input batch data containing 'spliced', 'unspliced', etc.
+        targets : Dict[str, torch.Tensor]
+            Target data.
+        similarity_matrix : torch.Tensor, optional
+            Cell-cell similarity matrix.
+        **kwargs
+            Additional arguments for loss computation.
+            
+        Returns
+        -------
+        Dict[str, torch.Tensor]
+            Loss dictionary with multiscale components if enabled.
+        """
+        if not self.multiscale_config.enable_multiscale:
+            # Standard single-scale loss computation
+            outputs = self.forward(**batch_data)
+            return self.compute_loss(outputs, targets, similarity_matrix, **kwargs)
+        
+        # Initialize multiscale loss if not already done
+        if self.multiscale_loss is None:
+            self._initialize_multiscale_loss()
+        
+        # Prepare batch data for multiscale loss
+        # The multiscale loss expects the model to be callable
+        def model_fn(**inputs):
+            return self.forward(**inputs)
+        
+        # Use multiscale loss computation
+        return self.multiscale_loss(
+            model=model_fn,
+            batch_data=batch_data,
+            targets=targets,
+            similarity_matrix=similarity_matrix,
+            **kwargs
+        )
+    
     # === ABSTRACT METHOD IMPLEMENTATIONS ===
     
     def _get_ode_parameters(self) -> Dict[str, torch.Tensor]:
@@ -1353,7 +1518,7 @@ class Stage4AdvancedModel(BaseVelocityModel):
         """Get integrated transcription rates."""
         if not hasattr(self, '_last_outputs') or self._last_outputs is None:
             raise RuntimeError("Model must be run through forward pass first.")
-        return self._last_outputs.get('transcription_rates', self.regulatory_network(spliced))
+        return self._last_outputs.get('transcription_rates', self.regulatory_network.compute_transcription_rates_direct(spliced))
     
     def _set_atac_mask(self, atac_mask: torch.Tensor) -> None:
         """Set ATAC mask for regulatory constraints."""
@@ -1465,6 +1630,7 @@ Advanced Features:
 ✓ Multi-Scale Integration: Cell-type and tissue coherence
 ✓ Advanced Regularization: Pathway-aware sparsity constraints
 ✓ Interpretability Tools: Feature importance and pathway analysis
+✓ Multiscale Training: {'ENABLED' if self.is_multiscale_enabled() else 'DISABLED'}
 
 Mathematical Foundation:
 - Velocity Formulation: α = W @ sigmoid(s) (CORRECTED)
@@ -1478,5 +1644,12 @@ Model Capabilities:
 - Multi-scale biological coherence
 - Pathway-informed sparsity regularization
 - Comprehensive model interpretability
+- Hierarchical multiscale training: {'ACTIVE' if self.is_multiscale_enabled() else 'INACTIVE'}
+
+Multiscale Configuration:
+- Max Scales: {self.multiscale_config.max_scales}
+- Min Scale Size: {self.multiscale_config.min_scale_size}
+- Scale Strategy: {self.multiscale_config.scale_strategy}
+- Scale Weights: {self.multiscale_config.multiscale_weights}
 """
         return summary.strip()

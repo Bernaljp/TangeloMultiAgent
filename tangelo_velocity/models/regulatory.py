@@ -587,3 +587,71 @@ class RegulatoryNetwork(nn.Module):
         """
         jacobian = self.compute_jacobian(spliced)
         return lambda_jacobian * torch.sum(torch.abs(jacobian))
+    
+    def get_sigmoid_features(self, spliced: torch.Tensor) -> torch.Tensor:
+        """
+        Get sigmoid-transformed features separately for matrix multiplication.
+        
+        This method exposes the sigmoid(s) transformation to allow proper
+        implementation of α = W @ sigmoid(s) formulation.
+        
+        Parameters
+        ----------
+        spliced : torch.Tensor
+            Spliced RNA counts of shape (batch_size, n_genes).
+            
+        Returns
+        -------
+        torch.Tensor
+            Sigmoid-transformed features of shape (batch_size, n_genes).
+        """
+        return self.sigmoid_features(spliced)
+    
+    def get_interaction_matrix_w(self) -> torch.Tensor:
+        """
+        Get the masked interaction matrix W for direct matrix multiplication.
+        
+        This method exposes the W matrix to allow proper implementation of
+        α = W @ sigmoid(s) formulation where @ is matrix multiplication.
+        
+        Returns
+        -------
+        torch.Tensor
+            Masked interaction matrix W of shape (n_genes, n_genes).
+        """
+        return self.interaction_network.get_interaction_matrix()
+    
+    def compute_transcription_rates_direct(self, spliced: torch.Tensor) -> torch.Tensor:
+        """
+        Compute transcription rates using direct matrix multiplication: α = W @ sigmoid(s).
+        
+        This method implements the EXACT mathematical formulation using proper
+        matrix multiplication instead of function calls.
+        
+        Parameters
+        ----------
+        spliced : torch.Tensor
+            Spliced RNA counts of shape (batch_size, n_genes).
+            
+        Returns
+        -------
+        torch.Tensor
+            Transcription rates of shape (batch_size, n_genes).
+        """
+        # Step 1: Get sigmoid features: sigmoid(s)
+        sigmoid_features = self.get_sigmoid_features(spliced)
+        
+        # Step 2: Get interaction matrix: W
+        W = self.get_interaction_matrix_w()
+        
+        # Step 3: Perform matrix multiplication: W @ sigmoid(s)
+        # sigmoid_features: (batch_size, n_genes)
+        # W: (n_genes, n_genes)
+        # Result: (batch_size, n_genes)
+        # We need W @ sigmoid_features.T, then transpose back
+        interaction_output = torch.matmul(W, sigmoid_features.T).T  # (n_genes, n_genes) @ (n_genes, batch_size) -> (n_genes, batch_size) -> (batch_size, n_genes)
+        
+        # Step 4: Add base transcription and apply softplus
+        transcription_rates = F.softplus(interaction_output + self.base_transcription)
+        
+        return transcription_rates

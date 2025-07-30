@@ -217,8 +217,8 @@ class VelocityODE(nn.Module):
         u = y[:, :self.n_genes]
         s = y[:, self.n_genes:]
         
-        # Compute transcription rates from regulatory network
-        alpha = self.regulatory_network(s)
+        # Compute transcription rates using proper matrix multiplication: α = W @ sigmoid(s)
+        alpha = self.regulatory_network.compute_transcription_rates_direct(s)
         
         # ODE system
         du_dt = alpha - self.beta * u
@@ -279,8 +279,8 @@ class VelocityODE(nn.Module):
         if self.beta is None or self.gamma is None:
             raise RuntimeError("ODE parameters must be set before computing components.")
         
-        # Compute transcription rates
-        alpha = self.regulatory_network(spliced)
+        # Compute transcription rates using proper matrix multiplication: α = W @ sigmoid(s)
+        alpha = self.regulatory_network.compute_transcription_rates_direct(spliced)
         
         # Compute individual terms
         beta_u = self.beta * unspliced
