@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch.distributions import Normal, NegativeBinomial, Poisson
 from torch.distributions.kl import kl_divergence as kl
 
-from .base import safe_log, MLP
+from .base import safe_log, MLP, initialize_weights
 
 
 class ReconstructionLoss(nn.Module):
