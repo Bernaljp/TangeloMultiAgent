@@ -44,6 +44,9 @@ class EncoderConfig:
     
     # Fusion strategy
     fusion_method: str = "sum"  # "sum", "concat", "attention"
+    
+    # Spatial features
+    spatial_feature_dim: int = 2
 
 
 @dataclass
@@ -60,6 +63,18 @@ class RegulatoryConfig:
     # Sigmoid features
     use_sigmoid_features: bool = True
     n_sigmoid_components: int = 10
+    sigmoid_init_range: float = 1.0
+    
+    # Base transcription
+    base_transcription: float = 0.1
+    
+    # Initialization parameters
+    linear_init_std: float = 0.1
+    
+    # Regularization
+    soft_constraint: bool = True
+    lambda_l1: float = 0.0
+    lambda_l2: float = 1e-4
 
 
 @dataclass
@@ -82,6 +97,42 @@ class ODEConfig:
 
 
 @dataclass
+class MultiscaleConfig:
+    """Configuration for multiscale training."""
+    # Multiscale training settings
+    enable_multiscale: bool = False
+    multiscale_weights: Tuple[float, ...] = (0.4, 0.3, 0.2, 0.1)
+    min_scale_size: int = 1
+    max_scales: int = 4
+    scale_strategy: str = "geometric"  # "geometric", "linear", "custom"
+    random_seed: Optional[int] = None
+
+
+@dataclass
+class Stage4Config:
+    """Configuration for Stage 4 advanced features."""
+    # Temporal dynamics
+    temporal_n_time_points: int = 10
+    temporal_prediction_horizon: float = 2.0
+    
+    # Uncertainty quantification
+    uncertainty_samples: int = 100
+    uncertainty_method: str = "dropout"  # "dropout", "ensemble", "bayesian"
+    
+    # Multi-scale integration
+    n_cell_types: int = 10
+    multiscale_method: str = "hierarchical"  # "hierarchical", "attention"
+    
+    # Interpretability
+    interpretability_top_k: int = 50
+    feature_importance_method: str = "integrated_gradients"  # "integrated_gradients", "attention"
+    
+    # Advanced regularization
+    pathway_regularization: float = 0.01
+    sparsity_regularization: float = 0.001
+
+
+@dataclass
 class LossConfig:
     """Configuration for loss functions."""
     # Loss weights
@@ -89,7 +140,7 @@ class LossConfig:
     tangent_space_weight: float = 0.1
     elbo_weight: float = 0.01
     
-    # Multi-level batching
+    # Multi-level batching (legacy - replaced by multiscale)
     use_hierarchical_loss: bool = False
     batch_levels: Tuple[float, ...] = (1.0, 0.5, 0.25, 0.125)
     level_weights: Tuple[float, ...] = (0.4, 0.3, 0.2, 0.1)
@@ -135,6 +186,8 @@ class TangeloConfig:
     ode: ODEConfig = field(default_factory=ODEConfig)
     loss: LossConfig = field(default_factory=LossConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
+    multiscale: MultiscaleConfig = field(default_factory=MultiscaleConfig)
+    stage4: Stage4Config = field(default_factory=Stage4Config)
     
     # Data configuration
     gene_dim: Optional[int] = None  # Inferred from data
@@ -154,10 +207,12 @@ class TangeloConfig:
         ode_config = ODEConfig(**config_dict.get("ode", {}))
         loss_config = LossConfig(**config_dict.get("loss", {}))
         training_config = TrainingConfig(**config_dict.get("training", {}))
+        multiscale_config = MultiscaleConfig(**config_dict.get("multiscale", {}))
+        stage4_config = Stage4Config(**config_dict.get("stage4", {}))
         
         # Create main config
         main_config = {k: v for k, v in config_dict.items() 
-                      if k not in ["graph", "encoder", "regulatory", "ode", "loss", "training"]}
+                      if k not in ["graph", "encoder", "regulatory", "ode", "loss", "training", "multiscale", "stage4"]}
         
         return cls(
             graph=graph_config,
@@ -166,6 +221,8 @@ class TangeloConfig:
             ode=ode_config,
             loss=loss_config,
             training=training_config,
+            multiscale=multiscale_config,
+            stage4=stage4_config,
             **main_config
         )
     
@@ -197,6 +254,7 @@ class TangeloConfig:
             "ode": self.ode.__dict__,
             "loss": self.loss.__dict__,
             "training": self.training.__dict__,
+            "multiscale": self.multiscale.__dict__,
         }
     
     def save_yaml(self, path: str) -> None:
@@ -311,9 +369,17 @@ def get_stage_config(stage: int) -> TangeloConfig:
                 reconstruction_weight=1.0,
                 tangent_space_weight=0.2,
                 elbo_weight=0.05,
-                use_hierarchical_loss=True,
+                use_hierarchical_loss=True,  # Legacy - kept for compatibility
                 batch_levels=(1.0, 0.5, 0.25, 0.125),
                 level_weights=(0.4, 0.3, 0.2, 0.1),
+            ),
+            multiscale=MultiscaleConfig(
+                enable_multiscale=True,
+                multiscale_weights=(0.4, 0.3, 0.2, 0.1),
+                min_scale_size=1,
+                max_scales=4,
+                scale_strategy="geometric",
+                random_seed=42,
             ),
             training=TrainingConfig(
                 n_epochs=300,
