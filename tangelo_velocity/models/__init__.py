@@ -7,6 +7,7 @@ from .base import BaseVelocityModel, BaseEncoder, MLP
 from .stage0 import Stage0Model
 from .stage1 import Stage1RegulatoryModel
 from .stage2 import Stage2GraphModel
+from .stage3 import Stage3IntegratedModel
 
 # Component modules - implemented
 from .regulatory import SigmoidFeatureModule, LinearInteractionNetwork
@@ -36,14 +37,16 @@ def get_velocity_model(config, gene_dim: int, atac_dim: int = None):
         return Stage1RegulatoryModel(config, gene_dim, atac_dim)
     elif stage == 2:
         return Stage2GraphModel(config, gene_dim, atac_dim)
-    elif stage in [3, 4]:
+    elif stage == 3:
+        return Stage3IntegratedModel(config, gene_dim, atac_dim)
+    elif stage == 4:
         raise NotImplementedError(
             f"Stage {stage} is not yet implemented. "
-            f"Currently available stages: 0, 1, 2. "
+            f"Currently available stages: 0, 1, 2, 3. "
             f"Stage {stage} implementation is planned for future releases."
         )
     else:
-        raise ValueError(f"Invalid development stage: {stage}. Must be 0, 1, or 2.")
+        raise ValueError(f"Invalid development stage: {stage}. Must be 0, 1, 2, or 3.")
 
 
 __all__ = [
@@ -56,6 +59,7 @@ __all__ = [
     "Stage0Model",
     "Stage1RegulatoryModel",
     "Stage2GraphModel",
+    "Stage3IntegratedModel",
     
     # Regulatory components
     "SigmoidFeatureModule",
