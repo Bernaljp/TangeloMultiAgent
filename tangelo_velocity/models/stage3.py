@@ -157,7 +157,7 @@ class IntegratedODE(nn.Module):
         torch.Tensor
             Integrated transcription rates of shape (batch_size, n_genes).
         """
-        # Get regulatory component: W(sigmoid(s))
+        # Get regulatory component: α = W @ sigmoid(s) (corrected formulation)
         regulatory_rates = self.regulatory_network(spliced)
         
         # Get graph component: G(graph_features)
@@ -876,3 +876,53 @@ Integration Features:
 - Comprehensive loss combining all stages
 """
         return summary.strip()
+    
+    def pretrain_sigmoid_features(
+        self,
+        spliced_data: torch.Tensor,
+        n_epochs: int = 100,
+        learning_rate: float = 0.01,
+        freeze_after_pretraining: bool = True
+    ) -> None:
+        """
+        Pre-train sigmoid features for Stage 3 integrated model.
+        
+        This implements the sigmoid pretraining protocol for the regulatory component
+        of the integrated Stage 3 model, ensuring proper α = W @ sigmoid(s) formulation.
+        
+        Parameters
+        ----------
+        spliced_data : torch.Tensor
+            Spliced RNA expression data of shape (n_cells, n_genes).
+        n_epochs : int, default 100
+            Number of pre-training epochs.
+        learning_rate : float, default 0.01
+            Learning rate for pre-training.
+        freeze_after_pretraining : bool, default True
+            Whether to freeze sigmoid parameters after pretraining.
+        """
+        print("=== STAGE 3 SIGMOID PRETRAINING PROTOCOL ===")
+        print("Pre-training sigmoid features for regulatory component...")
+        self.regulatory_network.pretrain_sigmoid(
+            spliced_data,
+            n_epochs=n_epochs,
+            learning_rate=learning_rate,
+            freeze_after_pretraining=freeze_after_pretraining
+        )
+        print("=== STAGE 3 SIGMOID PRETRAINING COMPLETE ===")
+        if freeze_after_pretraining:
+            print("Sigmoid parameters FROZEN. Only interaction network W will train.")
+            print("Graph components remain fully trainable.")
+        else:
+            print("All parameters remain trainable.")
+    
+    def is_sigmoid_frozen(self) -> bool:
+        """
+        Check if sigmoid features are currently frozen.
+        
+        Returns
+        -------
+        bool
+            True if sigmoid features are frozen, False otherwise.
+        """
+        return self.regulatory_network.is_sigmoid_frozen()

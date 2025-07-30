@@ -308,8 +308,8 @@ class LinearInteractionNetwork(nn.Module):
         # Apply ATAC mask to interaction matrix
         masked_matrix = self.interaction_matrix * self.atac_mask
         
-        # Linear transformation
-        output = torch.matmul(features, masked_matrix.T)
+        # Linear transformation: W @ sigmoid(s) (NOT features @ W.T)
+        output = torch.matmul(masked_matrix, features.T).T
         
         # Add bias if present
         if self.bias is not None:
@@ -407,10 +407,17 @@ class RegulatoryNetwork(nn.Module):
         self.base_transcription = nn.Parameter(
             torch.ones(n_genes) * 0.1
         )
+        
+        # Track whether sigmoid features are frozen after pretraining
+        self.sigmoid_frozen = False
     
     def forward(self, spliced: torch.Tensor) -> torch.Tensor:
         """
-        Compute transcription rates from spliced RNA.
+        Compute transcription rates from spliced RNA using α = W @ sigmoid(s) formulation.
+        
+        This implements the EXACT mathematical formulation required:
+        α = W @ sigmoid(s)
+        where W is the interaction network and sigmoid(s) are the sigmoid-transformed spliced counts.
         
         Parameters
         ----------
@@ -422,10 +429,10 @@ class RegulatoryNetwork(nn.Module):
         torch.Tensor
             Transcription rates of shape (batch_size, n_genes).
         """
-        # Apply sigmoid feature transformation
+        # Step 1: Apply sigmoid feature transformation: sigmoid(s)
         sigmoid_features = self.sigmoid_features(spliced)
         
-        # Apply linear interactions
+        # Step 2: Apply linear interactions: W @ sigmoid(s)
         interaction_output = self.interaction_network(sigmoid_features)
         
         # Combine with base transcription rate
@@ -442,10 +449,63 @@ class RegulatoryNetwork(nn.Module):
     def pretrain_sigmoid(
         self,
         spliced_data: torch.Tensor,
+        freeze_after_pretraining: bool = True,
         **kwargs
     ) -> None:
-        """Pre-train sigmoid features on spliced RNA data."""
+        """
+        Pre-train sigmoid features on spliced RNA data and optionally freeze them.
+        
+        Parameters
+        ----------
+        spliced_data : torch.Tensor
+            Spliced RNA data for pretraining.
+        freeze_after_pretraining : bool, default True
+            Whether to freeze sigmoid parameters after pretraining.
+        **kwargs
+            Additional arguments passed to pretrain_on_cdf.
+        """
+        # Ensure sigmoid features are trainable during pretraining
+        self.unfreeze_sigmoid_features()
+        
+        # Perform pretraining
         self.sigmoid_features.pretrain_on_cdf(spliced_data, **kwargs)
+        
+        # Freeze sigmoid features if requested
+        if freeze_after_pretraining:
+            self.freeze_sigmoid_features()
+            print("Sigmoid features frozen after pretraining.")
+    
+    def freeze_sigmoid_features(self) -> None:
+        """
+        Freeze sigmoid feature parameters to prevent further training.
+        
+        This implements the sigmoid pretraining protocol where sigmoid parameters
+        are frozen after pretraining and only the interaction network W continues training.
+        """
+        for param in self.sigmoid_features.parameters():
+            param.requires_grad = False
+        self.sigmoid_frozen = True
+        print("Sigmoid features frozen. Only interaction network W will be trained.")
+    
+    def unfreeze_sigmoid_features(self) -> None:
+        """
+        Unfreeze sigmoid feature parameters to allow training.
+        """
+        for param in self.sigmoid_features.parameters():
+            param.requires_grad = True
+        self.sigmoid_frozen = False
+        print("Sigmoid features unfrozen. All parameters will be trained.")
+    
+    def is_sigmoid_frozen(self) -> bool:
+        """
+        Check if sigmoid features are currently frozen.
+        
+        Returns
+        -------
+        bool
+            True if sigmoid features are frozen, False otherwise.
+        """
+        return self.sigmoid_frozen
     
     def get_interaction_matrix(self) -> torch.Tensor:
         """Get the learned interaction matrix."""

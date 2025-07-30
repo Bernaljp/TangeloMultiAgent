@@ -279,14 +279,18 @@ class Stage1RegulatoryModel(BaseStage1Model):
         self,
         spliced_data: torch.Tensor,
         n_epochs: int = 100,
-        learning_rate: float = 0.01
+        learning_rate: float = 0.01,
+        freeze_after_pretraining: bool = True
     ) -> None:
         """
-        Pre-train sigmoid features on spliced RNA data.
+        Pre-train sigmoid features on spliced RNA data and freeze them.
         
-        This optional pre-training step fits the sigmoid transformation
-        to match the empirical CDF of the spliced RNA data, providing
-        better initialization for the regulatory network.
+        This implements the sigmoid pretraining protocol:
+        1. Sigmoid function is pretrained at the beginning of training
+        2. After pretraining, sigmoid parameters are FROZEN (no further training)
+        3. Only the interaction network W continues to be trained
+        
+        This ensures stable feature representations for α = W @ sigmoid(s).
         
         Parameters
         ----------
@@ -296,14 +300,22 @@ class Stage1RegulatoryModel(BaseStage1Model):
             Number of pre-training epochs.
         learning_rate : float, default 0.01
             Learning rate for pre-training.
+        freeze_after_pretraining : bool, default True
+            Whether to freeze sigmoid parameters after pretraining.
         """
+        print("=== SIGMOID PRETRAINING PROTOCOL ===")
         print("Pre-training sigmoid features...")
         self.regulatory_network.pretrain_sigmoid(
             spliced_data,
             n_epochs=n_epochs,
-            learning_rate=learning_rate
+            learning_rate=learning_rate,
+            freeze_after_pretraining=freeze_after_pretraining
         )
-        print("Sigmoid pre-training complete.")
+        print("=== SIGMOID PRETRAINING COMPLETE ===")
+        if freeze_after_pretraining:
+            print("Sigmoid parameters FROZEN. Only interaction network W will train.")
+        else:
+            print("Sigmoid parameters remain trainable.")
     
     def predict_transcription_rates(
         self,
