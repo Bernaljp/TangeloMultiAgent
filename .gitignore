@@ -10,7 +10,8 @@ CLAUDE.md
 *_IMPLEMENTATION_REPORT.md
 *_VALIDATION_REPORT.md  
 ARCHITECTURE_*.md
-*MATH_VALIDATION_*.md
+*MATH_VALIDATION_*
+*TESTING_INSTRUCTIONS_*
 agent_instructions/
 .agent_configs/
 .claude/
